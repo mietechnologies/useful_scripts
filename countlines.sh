@@ -3,6 +3,7 @@
 set -euo pipefail
 
 target_dir="${1:-.}"
+mode="${2:-tracked}"
 
 if ! command -v cloc >/dev/null 2>&1; then
   echo "Error: cloc is not installed." >&2
@@ -14,7 +15,30 @@ if [[ ! -d "$target_dir" ]]; then
   exit 1
 fi
 
+case "$mode" in
+  tracked|full)
+    ;;
+  *)
+    echo "Error: mode must be 'tracked' or 'full'." >&2
+    echo "Usage: $(basename "$0") [directory] [tracked|full]" >&2
+    exit 1
+    ;;
+esac
+
 target_dir="${target_dir%/}"
+
+# Directories that commonly dominate line counts but are not useful source metrics.
+exclude_dirs="node_modules,.next,.next_stale_20260323_0945,.next_stale_20260323_1010,.next_stale_20260323_1030,.venv,venv,data,volumes,__pycache__,.pytest_cache,dist,build"
+
+run_cloc() {
+  local dir="$1"
+
+  if [[ "$mode" == "tracked" ]]; then
+    cloc --vcs=git --quiet --csv "$dir"
+  else
+    cloc --quiet --csv --exclude-dir="$exclude_dirs" "$dir"
+  fi
+}
 
 total_files=0
 total_blank=0
@@ -22,14 +46,14 @@ total_comment=0
 total_code=0
 found_dirs=0
 
-printf "Top-level directory totals for %s\n\n" "$target_dir"
+printf "Top-level directory totals for %s (%s mode)\n\n" "$target_dir" "$mode"
 printf "%-40s %10s %10s %10s %10s %10s\n" "Directory" "Files" "Blank" "Comment" "Code" "Total"
 
 for dir in "$target_dir"/*; do
   [[ -d "$dir" ]] || continue
 
   found_dirs=1
-  sum_line="$(cloc --quiet --csv "$dir" | awk -F, '$2 == "SUM" { print $1","$3","$4","$5 }')"
+  sum_line="$(run_cloc "$dir" | awk -F, '$2 == "SUM" { print $1","$3","$4","$5 }')"
 
   if [[ -z "$sum_line" ]]; then
     files=0
